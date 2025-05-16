@@ -81,6 +81,10 @@ cmake ..
 # Build the library and examples
 make
 
+# (Optional) Build CGO interoperability tests
+cmake -DBUILD_CGO_TESTS=ON ..
+make cgo-tests
+
 # Run tests
 ctest
 
@@ -230,10 +234,15 @@ To run the tests:
 # C tests
 make test
 
-# CGO tests (requires Go)
-cd tests/cgo_tests
-go test
+# CGO interoperability tests (requires Go):
+# You must enable CGO test build with CMake first:
+cd build
+cmake -DBUILD_CGO_TESTS=ON ..
+make cgo-tests
+./cgo.out
 ```
+
+> **Note:** The CGO interoperability tests are not built by default. You must configure CMake with `-DBUILD_CGO_TESTS=ON` to build and run them.
 
 ## Implementation Notes
 
