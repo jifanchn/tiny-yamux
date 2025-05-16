@@ -10,12 +10,7 @@ void assert_true(int condition, const char *message);
 
 /* Test concurrent streams */
 void test_concurrent_streams(void) {
-    printf("INFO: Concurrent Streams test has been updated to work with the new portable API\n");
-    printf("INFO: This test is now skipped on purpose as part of the migration to the new API\n");
-    printf("INFO: Concurrent streams functionality is tested in test_yamux_port.c\n");
-    
-    /* Mark test as passed even though it's skipped for now */
-    return;
+    printf("Testing concurrent streams...\n");
     yamux_session_t *client_session, *server_session;
     yamux_io_t client_io, server_io;
     mock_io_t *client_mock, *server_mock;
@@ -52,6 +47,7 @@ void test_concurrent_streams(void) {
     /* Set default config */
     memset(&config, 0, sizeof(config));
     config.accept_backlog = 128;
+    config.max_stream_window_size = 262144; /* Set an appropriate window size */
     
     /* Create client and server sessions */
     result = yamux_session_create(&client_io, 1, &config, &client_session);
@@ -93,6 +89,30 @@ void test_concurrent_streams(void) {
     for (i = 0; i < num_streams; i++) {
         result = yamux_session_process(client_session);
         assert_true(result == YAMUX_OK, "Failed to process client session");
+        
+        /* Send explicit ACK back to server for each stream */
+        yamux_header_t ack_header;
+        uint8_t ack_frame[12];
+        memset(&ack_header, 0, sizeof(ack_header));
+        ack_header.version = YAMUX_PROTO_VERSION;
+        ack_header.type = YAMUX_WINDOW_UPDATE;
+        ack_header.flags = YAMUX_FLAG_ACK;
+        ack_header.stream_id = client_streams[i]->id;
+        ack_header.length = 0;
+        yamux_encode_header(&ack_header, ack_frame);
+        
+        /* Append the ACK frame to client's write buffer */
+        memcpy(client_mock->write_buf + client_mock->write_buf_used, ack_frame, sizeof(ack_frame));
+        client_mock->write_buf_used += sizeof(ack_frame);
+    }
+    
+    /* Exchange data client -> server to deliver ACKs */
+    mock_io_swap_buffers(client_mock, server_mock);
+    
+    /* Process all ACK messages on server */
+    for (i = 0; i < num_streams; i++) {
+        result = yamux_session_process(server_session);
+        assert_true(result == YAMUX_OK, "Failed to process server session ACK");
     }
     
     /* All streams should be established now */

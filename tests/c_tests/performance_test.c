@@ -10,12 +10,7 @@
 
 /* Performance test with multiple streams and large data transfers */
 void test_stream_throughput(void) {
-    printf("INFO: Stream Throughput performance test has been updated to work with the new portable API\n");
-    printf("INFO: This test is now skipped on purpose as part of the migration to the new API\n");
-    printf("INFO: Performance testing will be reimplemented with the portable API\n");
-    
-    /* Mark test as passed even though it's skipped for now */
-    return;
+    printf("Testing stream throughput performance...\n");
     yamux_session_t *client_session, *server_session;
     yamux_io_t client_io, server_io;
     mock_io_t *client_mock, *server_mock;

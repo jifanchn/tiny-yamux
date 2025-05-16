@@ -44,6 +44,10 @@ A key focus of this project is ensuring seamless interoperability between the C 
 
 - **Flexible Frame Handling**: Modified the C implementation to handle all possible header configurations from the Go implementation, especially WINDOW_UPDATE frames with length 0 and various flag combinations.
 
+- **Ping Functionality**: Enhanced the ping test implementation to properly match the API design of the original Go implementation, ensuring accurate round-trip time measurements and protocol compatibility.
+
+- **Stream State Management**: Improved stream closing logic to handle various stream states correctly, especially transitions from FIN_RECV to CLOSED and from other states to FIN_SENT, ensuring proper stream lifecycle management.
+
 - **Protocol Compatibility**: Enhanced the `yamux_handle_window_update` function to accept frames with different length and flag combinations, making it more robust when interacting with the Go implementation.
 
 - **Validated Testing**: Comprehensive testing confirms that a C client can successfully connect to a Go server, exchange data, and maintain protocol-level compatibility.

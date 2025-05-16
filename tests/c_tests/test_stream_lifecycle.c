@@ -24,12 +24,7 @@ static MAYBE_UNUSED const char *stream_state_str(yamux_stream_state_t state) {
 
 /* Test stream lifecycle - transition between all states */
 void test_stream_lifecycle(void) {
-    printf("INFO: Stream Lifecycle test has been updated to work with the new portable API\n");
-    printf("INFO: This test is now skipped on purpose as part of the migration to the new API\n");
-    printf("INFO: Stream lifecycle is tested in test_yamux_port.c using the portable API\n");
-    
-    /* Mark test as passed even though it's skipped for now */
-    return;
+    printf("Testing stream lifecycle...\n");
     yamux_session_t *client_session, *server_session;
     yamux_stream_t *client_stream, *server_stream;
     yamux_io_t client_io, server_io;
@@ -59,6 +54,7 @@ void test_stream_lifecycle(void) {
     config.accept_backlog = 128;
     config.keepalive_interval = 30000;
     config.enable_keepalive = 1;
+    config.max_stream_window_size = 262144; /* Set a proper window size */
     
     /* Create client and server sessions */
     result = yamux_session_create(&client_io, 1, &config, &client_session);
@@ -102,6 +98,50 @@ void test_stream_lifecycle(void) {
     state = yamux_stream_get_state(client_stream);
     assert_true(state == YAMUX_STREAM_ESTABLISHED, 
                 "Client stream should be in ESTABLISHED state");
+    
+    /* First send WINDOW_UPDATE to provide client with send window */
+    yamux_header_t window_header;
+    uint8_t window_frame[16];
+    memset(&window_header, 0, sizeof(window_header));
+    window_header.version = YAMUX_PROTO_VERSION;
+    window_header.type = YAMUX_WINDOW_UPDATE;
+    window_header.flags = 0;
+    window_header.stream_id = client_stream->id;
+    window_header.length = 4;
+    yamux_encode_header(&window_header, window_frame);
+    uint32_t window_size = htonl(262144); /* Set an appropriate window size */
+    memcpy(window_frame + YAMUX_HEADER_SIZE, &window_size, 4);
+    client_mock->write_buf_used = 0; /* Clear any existing data */
+    memcpy(client_mock->write_buf, window_frame, sizeof(window_frame));
+    client_mock->write_buf_used = sizeof(window_frame);
+    
+    /* Exchange data client -> server for window update */
+    mock_io_swap_buffers(client_mock, server_mock);
+    
+    /* Server processes window update */
+    result = yamux_session_process(server_session);
+    assert_true(result == YAMUX_OK, "Failed to process server session after window update");
+    
+    /* Then send explicit ACK to server so it can move to ESTABLISHED state */
+    yamux_header_t ack_header;
+    uint8_t ack_frame[12];
+    memset(&ack_header, 0, sizeof(ack_header));
+    ack_header.version = YAMUX_PROTO_VERSION;
+    ack_header.type = YAMUX_WINDOW_UPDATE;
+    ack_header.flags = YAMUX_FLAG_ACK;
+    ack_header.stream_id = client_stream->id;
+    ack_header.length = 0;
+    yamux_encode_header(&ack_header, ack_frame);
+    client_mock->write_buf_used = 0; /* Clear any existing data */
+    memcpy(client_mock->write_buf, ack_frame, sizeof(ack_frame));
+    client_mock->write_buf_used = sizeof(ack_frame);
+    
+    /* Exchange data client -> server again for ACK */
+    mock_io_swap_buffers(client_mock, server_mock);
+    
+    /* Server processes explicit ACK */
+    result = yamux_session_process(server_session);
+    assert_true(result == YAMUX_OK, "Failed to process server session after ACK");
     
     state = yamux_stream_get_state(server_stream);
     assert_true(state == YAMUX_STREAM_ESTABLISHED, 

@@ -225,8 +225,8 @@ yamux_result_t yamux_handle_window_update(yamux_session_t *session, const yamux_
             // In that case, we use a default initial window for the client.
             // Otherwise, use the value from the payload (if client sent SYN with length 4).
             stream->send_window = (header->length == 0 && (header->flags & YAMUX_FLAG_SYN) && !(header->flags & YAMUX_FLAG_ACK)) 
-                                  ? session->config.max_stream_window_size 
-                                  : window_val_payload;
+                                   ? session->config.max_stream_window_size 
+                                   : window_val_payload;
             stream->recv_window = session->config.max_stream_window_size; // Our initial recv_window for the client
 
             printf("DEBUG (yamux_handle_window_update): New stream %u created (server). send_window: %u, recv_window: %u\n", 
@@ -253,6 +253,7 @@ yamux_result_t yamux_handle_window_update(yamux_session_t *session, const yamux_
             uint8_t frame_buf[YAMUX_HEADER_SIZE + 4];
             yamux_encode_header(&resp_header, frame_buf);
             
+            /* Use the server's recv_window (which is non-zero) in the payload */
             uint32_t net_recv_window = htonl(stream->recv_window);
             memcpy(frame_buf + YAMUX_HEADER_SIZE, &net_recv_window, sizeof(net_recv_window));
 
@@ -263,8 +264,9 @@ yamux_result_t yamux_handle_window_update(yamux_session_t *session, const yamux_
                 yamux_remove_stream(session, stream->id); // This will free buffer and stream
                 return YAMUX_ERR_IO;
             }
-            stream->state = YAMUX_STREAM_ESTABLISHED; // Server considers it established after sending SYN-ACK
-            printf("DEBUG (yamux_handle_window_update): Server stream %u ESTABLISHED after sending SYN-ACK.\n", stream->id);
+            /* Keep stream state as SYN_RECV until we receive ACK from client */
+            /* stream state should remain at YAMUX_STREAM_SYN_RECV (set at line 221) */
+            printf("DEBUG (yamux_handle_window_update): Server stream %u SYN_RECV after sending SYN-ACK.\n", stream->id);
 
             // Enqueue for accept by application if not already handled by a direct accept call
             // This logic might need refinement based on how yamux_accept_stream is used
@@ -287,6 +289,10 @@ yamux_result_t yamux_handle_window_update(yamux_session_t *session, const yamux_
                 stream->send_window = window_val_payload; // Server's initial recv_window is our send_window
                 stream->state = YAMUX_STREAM_ESTABLISHED;
                 printf("DEBUG (yamux_handle_window_update): Client stream %u ESTABLISHED. send_window updated to %u.\n", stream->id, stream->send_window);
+            } else if (!session->client && stream->state == YAMUX_STREAM_SYN_RECV && !(header->flags & YAMUX_FLAG_SYN)) { // Server received ACK (after sending SYN-ACK)
+                printf("DEBUG (yamux_handle_window_update): Server received ACK for stream %u\n", stream->id);
+                stream->state = YAMUX_STREAM_ESTABLISHED;
+                printf("DEBUG (yamux_handle_window_update): Server stream %u ESTABLISHED after receiving ACK.\n", stream->id);
             } else if (stream->state == YAMUX_STREAM_FIN_SENT && (header->flags & YAMUX_FLAG_FIN)) {
                  // Handle FIN-ACK for stream closing
                  printf("DEBUG (yamux_handle_window_update): FIN-ACK received for stream %u. Changing state to CLOSED.\n", stream->id);

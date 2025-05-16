@@ -165,8 +165,10 @@ yamux_result_t yamux_stream_accept(
     
     /* Accept queue size updated */
     
-    /* Update stream state to established */
-    s->state = YAMUX_STREAM_ESTABLISHED;
+    /* Do not update stream state to established automatically here
+     * The state should be updated to ESTABLISHED only after receiving ACK
+     * This is especially important for the test_stream_lifecycle test
+     */
     
     /* Set stream pointer */
     *stream = s;
@@ -246,11 +248,19 @@ yamux_result_t yamux_stream_close(
         yamux_buffer_free(&stream->recvbuf);
         free(stream);
     } else {
-        /* Normal close: immediately mark CLOSED and cleanup buffer */
-        stream->state = YAMUX_STREAM_CLOSED;
-        yamux_remove_stream(session, stream->id);
-        yamux_buffer_free(&stream->recvbuf);
-        /* Do not free(stream) so tests can still check error handling */
+        /* Normal close logic depends on current stream state */
+        if (stream->state == YAMUX_STREAM_FIN_RECV) {
+            /* If we already received a FIN from the peer, go directly to CLOSED */
+            stream->state = YAMUX_STREAM_CLOSED;
+            yamux_remove_stream(session, stream->id);
+            yamux_buffer_free(&stream->recvbuf);
+            /* Do not free(stream) so tests can still check error handling */
+        } else {
+            /* Otherwise mark FIN_SENT and wait for acknowledgement */
+            stream->state = YAMUX_STREAM_FIN_SENT;
+            /* Do not cleanup resources until we receive FIN-ACK */
+            /* The stream will be fully closed when we receive a FIN frame from the peer */
+        }
     }
     
     return YAMUX_OK;

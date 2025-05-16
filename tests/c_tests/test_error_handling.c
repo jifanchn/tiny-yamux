@@ -98,11 +98,7 @@ void error_io_free(error_io_t *io) {
 
 /* Test error handling */
 void test_error_handling(void) {
-    printf("INFO: Error Handling test has been updated to work with the new portable API\n");
-    printf("INFO: This test is now skipped on purpose as part of the migration to the new API\n");
-    printf("INFO: Error handling is implemented in the new portable API\n");
-    
-    /* For validation of our fixes, we'll run a focused subset of tests with proper cleanup */
+    printf("Testing error handling...\n");
     yamux_session_t *session = NULL;
     yamux_stream_t *stream = NULL;
     yamux_io_t io;
