@@ -22,9 +22,9 @@ set(YAMUX_SOURCES
     src/yamux_stream_ext.c
 )
 
-# Define port sources
 set(PORT_SOURCES
     src/yamux_port.c
+
 )
 
 # Define include directories
@@ -53,6 +53,35 @@ option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Custom target to build and run yamux tests
+if(BUILD_TESTS)
+    add_custom_target(yamux-test
+        DEPENDS test_yamux_main test_yamux_port
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Build and run yamux tests"
+    )
+endif()
+
+# CGO tests for C-Go interoperability
+option(BUILD_CGO_TESTS "Build C-Go interoperability tests" ON)
+if(BUILD_CGO_TESTS)
+    find_program(GO_EXECUTABLE go)
+    if(GO_EXECUTABLE)
+        message(STATUS "Go found at: ${GO_EXECUTABLE}")
+        add_custom_target(cgo-tests
+            COMMAND ${CMAKE_COMMAND} -E echo "Building CGO interoperability tests..."
+            COMMAND cd ${CMAKE_SOURCE_DIR}/tests/cgo_tests/src && ${GO_EXECUTABLE} build -o ${CMAKE_BINARY_DIR}/cgo.out cgo_compatibility_runner.go
+            DEPENDS tiny_yamux tiny_yamux_port
+            COMMENT "Building CGO interoperability tests directly with go build"
+        )
+    else()
+        message(WARNING "Go not found, CGO tests will not be built")
+    endif()
+else()
+    message(STATUS "CGO tests temporarily disabled for initial C tests")
 endif()
 
 # Installation

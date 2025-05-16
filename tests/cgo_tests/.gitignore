@@ -1,0 +1,26 @@
+# Build outputs
+/build/
+*.o
+*.a
+cgo_test
+cgo_test_*
+minimal_main_executable
+cgo_compatibility_runner
+
+# Go build artifacts
+*.exe
+*.test
+*.prof
+*.out
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temporary and backup files
+*.bak
+*.tmp
+.DS_Store

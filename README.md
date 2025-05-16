@@ -28,11 +28,27 @@ Key features of this port:
 
 - **Core Protocol**: All fundamental yamux protocol features (framing, session management, stream management, window updates, pings, go_away) are implemented.
 - **Portability**: Designed with a clear porting layer (`yamux_port.c` and `yamux.h` facade) for easy adaptation to various platforms and I/O mechanisms.
+- **Go Interoperability**: Enhanced compatibility with the Go implementation, especially in handling WINDOW_UPDATE frames with length 0, ensuring robust C-to-Go communication.
 - **Testing**: Passes a comprehensive suite of C-based unit and integration tests (`ctest`), covering various aspects including stream I/O, flow control, session lifecycle, and error handling.
+- **Cross-language Testing**: Includes CGO tests for validating C and Go interoperability, ensuring the implementations can seamlessly work together.
 - **Examples**: Includes a simple demo (`examples/simple_demo.c`) showcasing basic usage.
 - **Build System**: Uses CMake for building the library, examples, and tests.
 
-Future work might include further platform-specific examples, performance optimizations for specific use cases, or integration of CGO tests into the CMake build process.
+Future work might include further platform-specific examples, performance optimizations for specific use cases, or additional cross-language interoperability testing.
+
+## C and Go Interoperability
+
+A key focus of this project is ensuring seamless interoperability between the C implementation (tiny-yamux) and the original Go implementation (hashicorp/yamux).
+
+### Recent Improvements
+
+- **Flexible Frame Handling**: Modified the C implementation to handle all possible header configurations from the Go implementation, especially WINDOW_UPDATE frames with length 0 and various flag combinations.
+
+- **Protocol Compatibility**: Enhanced the `yamux_handle_window_update` function to accept frames with different length and flag combinations, making it more robust when interacting with the Go implementation.
+
+- **Validated Testing**: Comprehensive testing confirms that a C client can successfully connect to a Go server, exchange data, and maintain protocol-level compatibility.
+
+These improvements ensure that applications using the C implementation can seamlessly interoperate with services using the Go implementation, and vice versa.
 
 ## Directory Structure
 

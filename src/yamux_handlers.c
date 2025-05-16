@@ -128,24 +128,77 @@ yamux_result_t yamux_handle_data(yamux_session_t *session, const yamux_header_t 
  * @return YAMUX_OK on success, error code otherwise
  */
 yamux_result_t yamux_handle_window_update(yamux_session_t *session, const yamux_header_t *header) {
-    printf("DEBUG (yamux_handle_window_update): Handling WINDOW_UPDATE for stream %u, flags: 0x%x, length: %u\n", header->stream_id, header->flags, header->length);
+    printf("CASCADE_DEBUG_V7_ENTRY (yamux_handle_window_update): Handling WINDOW_UPDATE for stream %u, flags: 0x%x, length: %u\n", header->stream_id, header->flags, header->length);
 
-    if (header->length != 4) {
-        printf("ERROR (yamux_handle_window_update): Invalid header length %u for WINDOW_UPDATE, expected 4.\n", header->length);
-        // Optionally send GO_AWAY or RST stream
-        return YAMUX_ERR_PROTOCOL;
-    }
+    uint32_t window_val_payload = 0; // Initialize, used if payload is present and read
 
-    uint8_t payload_buf[4];
-    int read_len = session->io.read(session->io.ctx, payload_buf, 4);
-    if (read_len != 4) {
-        printf("ERROR (yamux_handle_window_update): Failed to read 4-byte payload for WINDOW_UPDATE. Read %d bytes.\n", read_len);
-        return YAMUX_ERR_IO;
+    // Logic to determine if payload should be read and its expected length based on flags
+    if (header->flags & YAMUX_FLAG_SYN && !(header->flags & YAMUX_FLAG_ACK)) { // Client is opening a stream with SYN
+        if (header->length == 0) {
+            printf("DEBUG (yamux_handle_window_update): Client SYN with length 0. Peer will use its default initial window or server assumes one.\n");
+            // window_val_payload remains 0, server will set its send_window for this stream to a default.
+        } else if (header->length == 4) {
+            printf("DEBUG (yamux_handle_window_update): Client SYN with length 4. Reading initial window from payload.\n");
+            uint8_t payload_buf[4];
+            int read_len = session->io.read(session->io.ctx, payload_buf, 4);
+            if (read_len != 4) {
+                printf("ERROR (yamux_handle_window_update): Failed to read 4-byte payload for SYN (len 4). Read %d.\n", read_len);
+                return YAMUX_ERR_IO;
+            }
+            memcpy(&window_val_payload, payload_buf, sizeof(uint32_t));
+            window_val_payload = ntohl(window_val_payload);
+            printf("DEBUG (yamux_handle_window_update): Client SYN, read payload_window_value: %u\n", window_val_payload);
+        } else {
+            printf("ERROR (yamux_handle_window_update): Invalid header length %u for client SYN. Expected 0 or 4.\n", header->length);
+            return YAMUX_ERR_PROTOCOL;
+        }
+    } else if (header->flags & (YAMUX_FLAG_FIN | YAMUX_FLAG_RST)) { // FIN or RST frame
+        if (header->length == 0) {
+            printf("DEBUG (yamux_handle_window_update): FIN/RST with length 0.\n");
+            // No payload for typical FIN/RST
+        } else if (header->length == 4 && (header->flags & YAMUX_FLAG_ACK)) { // e.g. FIN|ACK with payload - less common
+            printf("DEBUG (yamux_handle_window_update): FIN/RST with ACK and length 4. Reading payload.\n");
+            uint8_t payload_buf[4];
+            int read_len = session->io.read(session->io.ctx, payload_buf, 4);
+            if (read_len != 4) {
+                printf("ERROR (yamux_handle_window_update): Failed to read 4-byte payload for FIN/RST+ACK (len 4). Read %d.\n", read_len);
+                return YAMUX_ERR_IO;
+            }
+            memcpy(&window_val_payload, payload_buf, sizeof(uint32_t));
+            window_val_payload = ntohl(window_val_payload);
+            printf("DEBUG (yamux_handle_window_update): FIN/RST+ACK, read payload_window_value: %u\n", window_val_payload);
+        } else {
+            printf("ERROR (yamux_handle_window_update): Invalid header length %u for FIN/RST. Expected 0, or 4 if ACK also set. Flags: 0x%x\n", header->length, header->flags);
+            return YAMUX_ERR_PROTOCOL;
+        }
+    } else { // This covers: Pure Window Update (no other significant flags), or ACK frames (including SYN+ACK, etc.)
+             // For pure Window Update frames, length should be 4
+             // For ACK frames (including SYN+ACK), Go implementation might send with length 0 or 4
+        if (header->length != 4) {
+            if (header->length == 0) {
+                // Go implementation commonly sends length 0 frames for ACK and other control scenarios
+                printf("DEBUG (yamux_handle_window_update): Received frame with flags 0x%x and length 0 (Go compatibility mode)\n", header->flags);
+                window_val_payload = 0; // No window update in this case
+            } else {
+                // Still reject lengths other than 0 or 4
+                printf("CASCADE_ERROR_V7_ELSE_BLOCK (yamux_handle_window_update): Invalid header length %u. Expected 4 or 0 for flags 0x%x.\n", header->length, header->flags);
+                return YAMUX_ERR_PROTOCOL;
+            }
+        }
+        // Only read payload if length is 4 (skip if we already handled length 0 case above)
+        if (header->length == 4) {
+            printf("DEBUG (yamux_handle_window_update): Reading 4-byte payload for Window Update or SYN+ACK.\n");
+            uint8_t payload_buf[4];
+            int read_len = session->io.read(session->io.ctx, payload_buf, 4);
+            if (read_len != 4) {
+                printf("ERROR (yamux_handle_window_update): Failed to read 4-byte payload. Read %d.\n", read_len);
+                return YAMUX_ERR_IO;
+            }
+            memcpy(&window_val_payload, payload_buf, sizeof(uint32_t));
+            window_val_payload = ntohl(window_val_payload);
+            printf("DEBUG (yamux_handle_window_update): Read payload_window_value: %u\n", window_val_payload);
+        }
     }
-    uint32_t window_val_payload;
-    memcpy(&window_val_payload, payload_buf, sizeof(uint32_t));
-    window_val_payload = ntohl(window_val_payload);
-    printf("DEBUG (yamux_handle_window_update): Read payload_window_value: %u\n", window_val_payload);
 
     yamux_stream_t *stream = yamux_get_stream(session, header->stream_id);
 
@@ -167,7 +220,13 @@ yamux_result_t yamux_handle_window_update(yamux_session_t *session, const yamux_
             stream->session = session;
             stream->id = header->stream_id;
             stream->state = YAMUX_STREAM_SYN_RECV;
-            stream->send_window = window_val_payload; // Client's initial recv_window is our initial send_window
+            // Client's initial recv_window is our initial send_window.
+            // If client sent SYN with length 0, window_val_payload will be 0 from initialization.
+            // In that case, we use a default initial window for the client.
+            // Otherwise, use the value from the payload (if client sent SYN with length 4).
+            stream->send_window = (header->length == 0 && (header->flags & YAMUX_FLAG_SYN) && !(header->flags & YAMUX_FLAG_ACK)) 
+                                  ? session->config.max_stream_window_size 
+                                  : window_val_payload;
             stream->recv_window = session->config.max_stream_window_size; // Our initial recv_window for the client
 
             printf("DEBUG (yamux_handle_window_update): New stream %u created (server). send_window: %u, recv_window: %u\n", 

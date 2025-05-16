@@ -113,6 +113,8 @@ Yamux uses a credit-based flow control mechanism similar to HTTP/2. Each stream 
 
 Window Update frames (type 0x1) are critical for maintaining flow control. The data portion contains a 32-bit unsigned integer representing the additional number of bytes being added to the sender's window.
 
+**Interoperability Note**: While the standard protocol expects WINDOW_UPDATE frames to have a 4-byte payload, some implementations (particularly the Go implementation) may send frames with length=0 when combined with certain flags (e.g., ACK). For maximum compatibility between C and Go implementations, receivers should accept WINDOW_UPDATE frames with length=0, treating them as control signals with no window increment.
+
 Window Update frames can be used in two contexts:
 
 1. **Stream-level flow control**: When associated with a specific stream ID, the window update applies only to that stream

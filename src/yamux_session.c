@@ -148,6 +148,8 @@ yamux_result_t yamux_session_close(
 yamux_result_t yamux_session_process(
     yamux_session_t *session)
 {
+    fprintf(stderr, "\n*** ULTRA DEBUG: ENTERING yamux_session_process - VERSION CHECKPOINT 05-15-A ***\n\n");
+    fflush(stderr);
     uint8_t header_buf[YAMUX_HEADER_SIZE]; /* 12 bytes for header */
     yamux_header_t header;
     yamux_result_t result;
@@ -174,13 +176,30 @@ yamux_result_t yamux_session_process(
     int read_result = session->io.read(session->io.ctx, header_buf, YAMUX_HEADER_SIZE);
     printf("DEBUG: Header read result: %d, expected: %d\n", read_result, YAMUX_HEADER_SIZE);
     if (read_result != YAMUX_HEADER_SIZE) {
+        fprintf(stderr, "DEBUG (yamux_session_process): Header read failed/short (read_result=%d), returning YAMUX_ERR_IO (%d)\n", read_result, YAMUX_ERR_IO);
+        fflush(stderr);
         return YAMUX_ERR_IO;
     }
     
     /* Decode header */
+    fprintf(stderr, "DEBUG: --- PRE-HEX DUMP MARKER ---\n");
+    fflush(stderr);
+    fprintf(stderr, "DEBUG: Raw header_buf (%d bytes): ", read_result);
+    for (int i = 0; i < read_result; i++) {
+        fprintf(stderr, "%02x ", header_buf[i]);
+    }
+    fprintf(stderr, "\n");
+    fprintf(stderr, "DEBUG: --- POST-HEX DUMP MARKER ---\n");
+    fflush(stderr);
+
+    fprintf(stderr, "MANUAL CHECK: header_buf[0] (Version) = %u | header_buf[1] (Type) = %u\n", header_buf[0], header_buf[1]);
+    fflush(stderr);
+
+    /* Decode header */
     result = yamux_decode_header(header_buf, YAMUX_HEADER_SIZE, &header);
-    printf("DEBUG: Decode header result: %d, frame type: %d, flags: %x, stream_id: %u\n", 
-           result, header.type, header.flags, header.stream_id);
+    fprintf(stderr, "DEBUG: Decode header result: %d, frame type: %d, flags: 0x%x, stream_id: %u, length: %u\n", 
+           result, header.type, header.flags, header.stream_id, header.length);
+    fflush(stderr);
     if (result != YAMUX_OK) {
         return result;
     }
